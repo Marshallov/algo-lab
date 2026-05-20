@@ -1,90 +1,103 @@
-from collections import defaultdict, deque
+from collections import defaultdict
+
+class DSU:
+    def __init__(self, n):
+        self.parent = list(range(n))
+
+    def find(self, i):
+        if self.parent[i] == i:
+            return i
+        self.parent[i] = self.find(self.parent[i]) 
+        return self.parent[i]
+
+    def union(self, i, j):
+        root_i, root_j = self.find(i), self.find(j)
+        if root_i != root_j:
+            self.parent[root_i] = root_j
+            return True
+        return False
 
 
 class Graph:
     def __init__(self, n):
         self.n = n
-        self.tree = defaultdict(list)
+        self.edges = []            
+        self.tree = defaultdict(list) 
 
-    def add_tree_edge(self, u, v, w):
-        self.tree[u].append((v, w))
-        self.tree[v].append((u, w))
+    def add_edge(self, u, v, w):
+        self.edges.append((w, u, v))
 
-    # Поиск максимального ребра на пути u -> v
-    def max_edge_on_path(self, u, v):
-        parent = [-1] * self.n
-        edge_weight = [0] * self.n
+    def build_mst(self):
+        self.edges.sort()
+        dsu = DSU(self.n)
+        for w, u, v in self.edges:
+            if dsu.union(u, v):
+                self.tree[u].append((v, w))
+                self.tree[v].append((u, w))
 
-        q = deque([u])
-        parent[u] = u
+    def _find_path(self, u, target, parent=-1):
+        if u == target:
+            return [] 
+            
+        for v, w in self.tree[u]:
+            if v != parent: 
+                path = self._find_path(v, target, u)
+                if path is not None:
+                    return path + [(u, v, w)] 
+        return None
 
-        # BFS
-        while q:
-            cur = q.popleft()
-
-            if cur == v:
-                break
-
-            for nxt, w in self.tree[cur]:
-                if parent[nxt] == -1:
-                    parent[nxt] = cur
-                    edge_weight[nxt] = w
-                    q.append(nxt)
-
-        # Восстанавливаем путь и ищем max edge
-        max_w = -1
-        max_edge = None
-
-        cur = v
-        while cur != u:
-            if edge_weight[cur] > max_w:
-                max_w = edge_weight[cur]
-                max_edge = (cur, parent[cur], edge_weight[cur])
-
-            cur = parent[cur]
-
-        return max_edge  
-
-    # (a) Проверка: остается ли T MST
     def is_still_mst(self, u, v, new_weight):
-        _, _, max_w = self.max_edge_on_path(u, v)
+        path = self._find_path(u, v)
+        max_edge = max(path, key=lambda edge: edge[2]) 
+        
+        return new_weight >= max_edge[2]
 
-        return new_weight >= max_w
-
-    # (b) Построение нового MST
     def update_mst(self, u, v, new_weight):
-        a, b, max_w = self.max_edge_on_path(u, v)
+        path = self._find_path(u, v)
+        max_u, max_v, max_w = max(path, key=lambda edge: edge[2])
 
-        # Если новое ребро не улучшает MST
-        if new_weight >= max_w:
-            return
+        if new_weight < max_w:
+            self.tree[max_u].remove((max_v, max_w))
+            self.tree[max_v].remove((max_u, max_w))
+            self.tree[u].append((v, new_weight))
+            self.tree[v].append((u, new_weight))
+            
+        new_mst_edges = set()
+        for node in self.tree:
+            for neighbor, weight in self.tree[node]:
+                edge = (min(node, neighbor), max(node, neighbor), weight)
+                new_mst_edges.add(edge)
+                
+        return list(new_mst_edges)
 
-        # Удаляем тяжелое ребро
-        self.tree[a] = [(x, w) for x, w in self.tree[a]
-                        if not (x == b and w == max_w)]
-
-        self.tree[b] = [(x, w) for x, w in self.tree[b]
-                        if not (x == a and w == max_w)]
-
-        # Добавляем новое ребро
-        self.add_tree_edge(u, v, new_weight)
 
 
 
 g = Graph(4)
 
-# MST
-g.add_tree_edge(0, 1, 1)
-g.add_tree_edge(1, 2, 4)
-g.add_tree_edge(2, 3, 5)
+g.add_edge(0, 1, 1)
+g.add_edge(1, 2, 4)
+g.add_edge(2, 3, 5)
+g.add_edge(0, 2, 10) # Это "плохое" ребро, в MST оно не пойдет
 
-# Новое ребро
+# Строим изначальное дерево T
+g.build_mst()
+print("Изначальное дерево T было построено.\n")
+
+# 2. Добавляем новое ребро (u=0, v=3, weight=2)
 u, v, w = 0, 3, 2
+print(f"Пытаемся добавить новое ребро: ({u} - {v}) с весом {w}")
 
-# (a)
-print(g.is_still_mst(u, v, w))
+# Пункт (a) - проверяем
+is_optimal = g.is_still_mst(u, v, w)
+print(f"(a) Остается ли старое дерево минимальным? Ответ: {is_optimal}")
 
-# (b)
-g.update_mst(u, v, w)
+# Пункт (b) - обновляем и выводим
+if not is_optimal:
+    print("(b) Дерево больше не оптимально. Запускаем обновление...")
+    
+new_tree_edges = g.update_mst(u, v, w)
 
-print(dict(g.tree))
+print("\nНовое минимальное остовное дерево T (узел1, узел2, вес):")
+for edge in sorted(new_tree_edges):
+    print(edge)
